@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Photo anniv</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=Archivo+Black&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --noir: #141210;
+    --boitier: #1f1c18;
+    --jaune: #f2c230;
+    --orange: #ff8a1f;
+    --texte: #f4efe6;
+    --discret: #9a9288;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--noir); color: var(--texte);
+    font-family: 'Archivo', system-ui, sans-serif; }
+  main { max-width: 480px; margin: 0 auto; padding: 24px 20px calc(40px + env(safe-area-inset-bottom, 0px)); }
+  h1 { font-family: 'Archivo Black', 'Archivo', sans-serif; font-size: 2rem; line-height: 1.1; margin: 8px 0 4px; }
+  .sous-titre { color: var(--discret); margin: 0 0 28px; }
+
+  /* Le compteur de poses : l'élément marquant de la page */
+  .compteur { background: var(--jaune); color: var(--noir); border-radius: 18px; padding: 18px 20px;
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .compteur .legende { font-weight: 800; font-size: 1.05rem; max-width: 9em; line-height: 1.2; }
+  .compteur .fenetre { background: var(--noir); color: var(--orange); border-radius: 10px;
+    font-family: 'Archivo Black', sans-serif; font-size: 3.2rem; padding: 4px 18px; min-width: 2.2em; text-align: center; }
+
+  button, .bouton { font: inherit; font-weight: 800; font-size: 1.1rem; width: 100%; padding: 18px;
+    border: 0; border-radius: 14px; background: var(--texte); color: var(--noir); cursor: pointer; display: block; text-align: center; }
+  button:disabled { background: #3a352f; color: var(--discret); cursor: not-allowed; }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
+  input[type=text] { font: inherit; width: 100%; padding: 16px; border-radius: 14px; border: 2px solid #3a352f;
+    background: var(--boitier); color: var(--texte); margin-bottom: 14px; font-size: 1.1rem; }
+  label { display: block; margin-bottom: 8px; font-weight: 500; }
+
+  .message { margin: 14px 0 0; min-height: 1.4em; color: var(--discret); }
+  .message.erreur { color: #ff7a6b; }
+  .pellicule { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 28px; padding: 0; list-style: none; }
+  .pellicule img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; display: block; }
+  .note { margin-top: 28px; color: var(--discret); font-size: .9rem; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="titre"></h1>
+  <p class="sous-titre" id="sous-titre"></p>
+
+  <!-- Étape 1 : le prénom -->
+  <section id="ecran-prenom" hidden>
+    <label for="champ-prenom">Ton prénom</label>
+    <input type="text" id="champ-prenom" maxlength="30" autocomplete="given-name">
+    <button id="bouton-prenom">Commencer</button>
+  </section>
+
+  <!-- Étape 2 : l'appareil photo -->
+  <section id="ecran-photo" hidden>
+    <div class="compteur">
+      <div class="legende">Photos restantes</div>
+      <div class="fenetre" id="poses">--</div>
+    </div>
+    <button id="bouton-photo">Prendre une photo</button>
+    <input type="file" id="champ-fichier" accept="image/*" capture="environment" hidden>
+    <p class="message" id="message" role="status"></p>
+    <ul class="pellicule" id="pellicule"></ul>
+    <p class="note" id="note-reveal"></p>
+  </section>
+</main>
+
+<script>
+/* ============ RÉGLAGES : modifie seulement cette partie ============ */
+const REGLAGES = {
+  titre: "30 ans JF Kévin et Adrien",   // change le nom
+  sousTitre: "Prends des photos, tu les verras après la fête.",
+  nombrePoses: 15,                       // poses par invité
+  dateRevelation: "2026-11-14T10:00:00", // heure où la galerie s'ouvrira (prévue pour plus tard)
+  largeurMax: 2000                       // taille maximale des photos, en pixels
+};
+/* =================================================================== */
+
+const $ = (id) => document.getElementById(id);
+const CLE = { prenom: 'anniv_prenom', id: 'anniv_id', utilisees: 'anniv_poses_utilisees' };
+
+/* ---------- Mémoire du navigateur (sans compte) ---------- */
+function lire(cle, defaut) { try { return localStorage.getItem(cle) ?? defaut; } catch { return defaut; } }
+function ecrire(cle, valeur) { try { localStorage.setItem(cle, valeur); } catch {} }
+
+function identifiantInvite() {
+  let id = lire(CLE.id, null);
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+    ecrire(CLE.id, id);
+  }
+  return id;
+}
+
+/* ---------- Compteur de poses ---------- */
+function posesRestantes() {
+  return Math.max(0, REGLAGES.nombrePoses - Number(lire(CLE.utilisees, 0)));
+}
+function majCompteur() {
+  const n = posesRestantes();
+  $('poses').textContent = n;
+  $('bouton-photo').disabled = n === 0;
+  $('bouton-photo').textContent = n === 0 ? 'Pellicule terminée' : 'Prendre une photo';
+}
+
+function message(texte, erreur = false) {
+  $('message').textContent = texte;
+  $('message').classList.toggle('erreur', erreur);
+}
+
+/* ---------- Le filtre pellicule ---------- */
+async function chargerImage(fichier) {
+  // imageOrientation corrige les photos qui seraient couchées sur le côté (iPhone notamment)
+  try { return await createImageBitmap(fichier, { imageOrientation: 'from-image' }); }
+  catch {
+    return await new Promise((ok, ko) => {
+      const img = new Image();
+      img.onload = () => ok(img);
+      img.onerror = ko;
+      img.src = URL.createObjectURL(fichier);
+    });
+  }
+}
+
+function appliquerFiltre(ctx, w, h) {
+  const donnees = ctx.getImageData(0, 0, w, h);
+  const p = donnees.data;
+  for (let i = 0; i < p.length; i += 4) {
+    let r = p[i], g = p[i + 1], b = p[i + 2];
+    // un peu de contraste
+    r = (r - 128) * 1.1 + 128; g = (g - 128) * 1.1 + 128; b = (b - 128) * 1.1 + 128;
+    // teinte chaude
+    r = r * 1.06 + 8; g = g + 2; b = b * 0.88;
+    // noirs légèrement délavés, comme une vieille pellicule
+    r = r * 0.92 + 14; g = g * 0.92 + 14; b = b * 0.92 + 14;
+    // grain
+    const grain = (Math.random() - 0.5) * 28;
+    p[i] = r + grain; p[i + 1] = g + grain; p[i + 2] = b + grain; // le canvas borne les valeurs de 0 à 255
+  }
+  ctx.putImageData(donnees, 0, 0);
+
+  // bords assombris
+  const rayon = Math.hypot(w, h) / 2;
+  const degrade = ctx.createRadialGradient(w / 2, h / 2, rayon * 0.55, w / 2, h / 2, rayon);
+  degrade.addColorStop(0, 'rgba(0,0,0,0)');
+  degrade.addColorStop(1, 'rgba(0,0,0,0.45)');
+  ctx.fillStyle = degrade;
+  ctx.fillRect(0, 0, w, h);
+
+  // tampon de date orange en bas à droite
+  const d = new Date();
+  const texte = `'${String(d.getFullYear()).slice(2)} ${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getDate()).padStart(2, '0')}`;
+  const taille = Math.round(Math.max(w, h) * 0.035);
+  ctx.font = `800 ${taille}px 'Archivo', sans-serif`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.shadowColor = 'rgba(255,138,31,0.8)';
+  ctx.shadowBlur = taille * 0.4;
+  ctx.fillStyle = '#ff8a1f';
+  ctx.fillText(texte, w - taille, h - taille);
+  ctx.shadowBlur = 0;
+}
+
+function canvasVersBlob(canvas, type, qualite) {
+  return new Promise((ok) => canvas.toBlob(ok, type, qualite));
+}
+
+/* ---------- Envoi des photos : à brancher à l'étape suivante (Supabase) ---------- */
+async function envoyerPhoto(blobFiltre, blobOriginal, infos) {
+  // Pour l'instant, rien n'est envoyé : la photo reste sur ce téléphone.
+  // On branchera ici Supabase (voir l'étape « stockage en ligne »).
+  console.log('Photo prête à envoyer', infos, blobFiltre.size, 'octets');
+}
+
+/* ---------- Quand une photo est prise ---------- */
+async function traiterPhoto(fichier) {
+  message('Développement de la photo...');
+  $('bouton-photo').disabled = true;
+  try {
+    const image = await chargerImage(fichier);
+    const largeurSource = image.width, hauteurSource = image.height;
+    const echelle = Math.min(1, REGLAGES.largeurMax / Math.max(largeurSource, hauteurSource));
+    const w = Math.round(largeurSource * echelle), h = Math.round(hauteurSource * echelle);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(image, 0, 0, w, h);
+    appliquerFiltre(ctx, w, h);
+
+    const blobFiltre = await canvasVersBlob(canvas, 'image/jpeg', 0.88);
+    await envoyerPhoto(blobFiltre, fichier, { prenom: lire(CLE.prenom, ''), invite: identifiantInvite(), date: new Date().toISOString() });
+
+    // on compte la pose seulement si tout s'est bien passé
+    ecrire(CLE.utilisees, Number(lire(CLE.utilisees, 0)) + 1);
+
+    const vignette = document.createElement('li');
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(blobFiltre);
+    img.alt = 'Photo prise';
+    vignette.appendChild(img);
+    $('pellicule').prepend(vignette);
+    message('Photo prise !');
+  } catch (e) {
+    console.error(e);
+    message("La photo n'a pas pu être traitée. Réessaie.", true);
+  }
+  majCompteur();
+}
+
+/* ---------- Mise en route ---------- */
+function afficherPhoto() {
+  $('ecran-prenom').hidden = true;
+  $('ecran-photo').hidden = false;
+  $('sous-titre').textContent = `Salut ${lire(CLE.prenom, '')} ! ${REGLAGES.sousTitre}`;
+  const d = new Date(REGLAGES.dateRevelation);
+  $('note-reveal').textContent = isNaN(d) ? '' :
+    'Les photos seront révélées le ' + d.toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' }) + '.';
+  majCompteur();
+}
+
+$('titre').textContent = REGLAGES.titre;
+$('sous-titre').textContent = REGLAGES.sousTitre;
+
+$('bouton-prenom').addEventListener('click', () => {
+  const prenom = $('champ-prenom').value.trim();
+  if (!prenom) { $('champ-prenom').focus(); return; }
+  ecrire(CLE.prenom, prenom);
+  identifiantInvite();
+  afficherPhoto();
+});
+$('bouton-photo').addEventListener('click', () => $('champ-fichier').click());
+$('champ-fichier').addEventListener('change', (e) => {
+  const fichier = e.target.files[0];
+  e.target.value = ''; // permet de reprendre la même photo si besoin
+  if (fichier) traiterPhoto(fichier);
+});
+
+if (lire(CLE.prenom, '')) afficherPhoto(); else $('ecran-prenom').hidden = false;
+</script>
+</body>
+</html>
